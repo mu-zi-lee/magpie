@@ -30,6 +30,43 @@ For a moved subscription, its built-in upstream implementation does not run. Plu
 
 Quota aggregation in [`quotas.go`](../../internal/provider/quotas.go) suppresses a key's GLM Coding Plan card only when its comparable reset windows match a ZCode subscription card: built-in or moved `zcode`, or independently installed `zcode-plugin`. [`PlanQuotas`](../../internal/provider/planquota.go) identifies GLM plans by their quota endpoint, including custom provider ids. Matching reset schedules from unrelated vendors do not hide cards. Within this pair, resets remain a heuristic for the shared account; a plan's `User` is a key label or mask, not a login identity. Errors, conflicting resets, or no comparable resets keep the plan visible. This applies to the Usage page, tray, quota reports, alerts, and quota waits; it does not change plugin ownership or upstream requests.
 
+## Explicit uninstall cleanup
+
+[`Remove`](../../internal/plugin/store.go) checks a package's optional
+`magpie.uninstall` string in `package.json` before deleting its entry or package.
+It must name a regular module inside the package; absolute paths and symlinks
+that escape the package are rejected. Packages without the declaration have no
+cleanup callback. Package-manager lifecycle scripts remain disabled.
+
+The host first calls an optional `lifecycle.dispose()` hook on this plugin's
+loaded instances, including retiring host generations. It prevents new host
+generations from loading the spec until removal finishes. This hook should stop
+owned processes and prevent new work; it should not delete persisted data.
+Other plugins' hooks are not called. Disabling, updating, normal host retirement
+and exit do not execute the uninstall module.
+
+[`uninstall.go`](../../internal/plugin/uninstall.go) then runs the declared module
+in a separate Bun process, including for disabled plugins, without executing its
+normal factory, auth or model hooks. Its default export is an async function
+`uninstall({directory, worktree, reason: "uninstall"}, options)`; both paths name
+Magpie's configuration directory, and options are the saved entry options.
+The lifecycle call and cleanup process share a 30-second deadline and honor the
+caller's cancellation. Cleanup modules must be idempotent, delete only resources
+the plugin owns, and finish before returning. Arbitrary cleanup exceptions are
+not copied to removal errors because they may contain credentials.
+
+A cleanup, disposal or package-removal failure keeps the entry so removal can be
+retried; already deleted data is not restored. Successful cleanup precedes
+`bun remove --ignore-scripts` for managed packages, then saving the entry's removal
+and restarting the host. A local folder installation leaves the source folder
+in place. `TestRemoveDisabledPluginRunsDeclaredCleanupBeforeRemovingEntry`,
+`TestRemoveCleanupFailureKeepsPluginForRetry`, `TestRemoveCleanupHonorsCancellation`
+and `TestRemoveDisposesLivePluginBeforeStaticCleanup` exercise real Bun modules,
+on-disk list ordering, disabled factories, retry, cancellation and live disposal.
+`TestRemovePackageFailureKeepsEntryAfterCleanup` verifies package-manager failure
+does not discard the entry. `TestUninstallDeclarationStaysWithinPackage` covers
+rejected entry declarations, including an existing external file and a symlink.
+
 ## A plugin's daily check-in
 
 A plugin can press its vendor's daily check-in (签到) itself: its `auth` hook gains `checkin(getAuth, provider)`, beside `usage`. The host lists the provider with `checkin: true` (`plugin.Provider.Checkin`) and answers `checkin({provider, account})` (`plugin.AccountCheckin`) by refreshing the account as `usage` does and calling the hook with the account's auth.

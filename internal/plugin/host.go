@@ -841,7 +841,7 @@ func startOn(ctx context.Context, bun string) (*host, bool, error) {
 	for _, e := range l.Plugins {
 		// a plugin that is only gateway middleware runs in the gateway
 		// (internal/middleware), not here
-		if _, only := Middleware(Target(e.Spec)); !e.Off && !only {
+		if _, only := Middleware(Target(e.Spec)); !e.Off && !only && !isUninstalling(e.Spec) {
 			items = append(items, item{e.Spec, Target(e.Spec), e.Options})
 		}
 	}

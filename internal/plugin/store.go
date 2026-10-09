@@ -528,6 +528,22 @@ func Remove(ctx context.Context, name string) error {
 		return fmt.Errorf("no plugin %q", name)
 	}
 	e := l.Plugins[i]
+	finish := beginUninstall(e.Spec)
+	defer func() { finish(); Restart() }()
+	if err := uninstall(ctx, e); err != nil {
+		listMu.Unlock()
+		return fmt.Errorf("removing %s: %w", e.Spec, err)
+	}
+	if !IsPath(e.Spec) {
+		bun, err := Bun(ctx)
+		if err == nil {
+			err = bunCommand(ctx, bun, Dir(), "remove", "--ignore-scripts", Name(e.Spec)).Run()
+		}
+		if err != nil {
+			listMu.Unlock()
+			return fmt.Errorf("removing plugin package: %w", err)
+		}
+	}
 	l.Plugins = slices.Delete(l.Plugins, i, i+1)
 	maps.DeleteFunc(l.Prefer, func(_, s string) bool { return s == e.Spec })
 	err := save(l)
@@ -535,12 +551,6 @@ func Remove(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if !IsPath(e.Spec) {
-		if bun, err := Bun(ctx); err == nil {
-			_ = bunCommand(ctx, bun, Dir(), "remove", "--ignore-scripts", Name(e.Spec)).Run()
-		}
-	}
-	Restart()
 	return nil
 }
 
