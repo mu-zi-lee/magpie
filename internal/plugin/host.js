@@ -1675,6 +1675,12 @@ async function fetchAs(id, record, key, params) {
 // ---- the loop ----------------------------------------------------------------
 
 const handlers = {
+  async disposePlugin(p) {
+    for (const h of hooks) {
+      if (h.spec === p.spec && typeof h.hooks.lifecycle?.dispose === "function") await h.hooks.lifecycle.dispose()
+    }
+    return null
+  },
   async init(p) {
     authPath = p.authPath
     modelsDevPath = p.modelsDevPath ?? ""
